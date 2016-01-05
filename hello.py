@@ -1,3 +1,6 @@
 #!/usr/bin/python
 
-print("Hello, world!")
+def Hello(name):
+   print("Hello, {0}!".format(name))
+
+Hello("Zhou")
