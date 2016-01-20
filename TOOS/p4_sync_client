@@ -1,0 +1,39 @@
+#!/bin/bash
+#
+# Script used to sync local file with remote file managed by perforce
+# rsync should be configured to sync between two hosts without password
+# $0 [p4_client_name] [local_file]
+# sample: ./p4_sync_client zhouhuang-client /Users/zhouhuang/Perforce/zhouhuang-client/vxx
+
+#set -x
+
+
+if [ $# -le 1 ]
+then
+    echo "usage: [remote_client_name] [local_client_name]"
+    exit 1
+fi
+
+remote_host=hostname
+remote_user=zhouhuang
+remote_dbc=/dbc/path
+remote_client=$1
+local_client=$2
+
+export_var="export P4PORT=perforce.server.com:1666 && export P4USER=zhouhuang && export P4CLIENT=$remote_client"
+
+cd $local_client/tests
+# step1. rsync local file to remote
+echo "rsync . -auvz --exclude '*.pyc' $remote_user@$remote_host:$remote_dbc/$remote_client/path/to/tests"
+rsync . -auvz --exclude '*.pyc' $remote_user@$remote_host:$remote_dbc/$remote_client/path/to/tests
+
+# step2. p4 sync remote file with repository and resolve conflicts
+echo "ssh $remote_user@$remote_host '$export_var && p4 sync && p4 resolve -am'"
+ssh $remote_user@$remote_host "$export_var && p4 sync && p4 resolve -am"
+cd -
+
+# step3. rsync updated remote files back 
+cd $local_client
+echo "rsync -auvz --exclude '*.pyc' $remote_user@$remote_host:$remote_dbc/$remote_client/path/to/tests ."
+rsync -auvz --exclude '*.pyc' $remote_user@$remote_host:$remote_dbc/$remote_client/path/to/tests .
+cd -
