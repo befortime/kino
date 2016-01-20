@@ -1,0 +1,198 @@
+#!/bin/bash
+
+########################
+#
+# This is a simple library to manipulate hosts
+# sample: yourscript.sh
+#    source /paht/to/kino
+#    my_ssh /etc/init.d/network restart
+# and run with
+# ./yourscript.sh pattern otherparams
+# ./yourscript.sh 'host_ip' otherparams
+#
+# Could use pattern to run on all hosts match, or run on host ip listed
+# pattern could be any string that distincwish hosts you wish to use
+# *MUST* pass the pattern/ip_list as first parameter in your script
+#
+# functions:
+# my_ssh my_ssh_output my_ssh_1 my_scp_to my_scp_from my_scp_from_1
+#
+########################
+if [ $# -lt 1 ]
+then
+    #echo "usage: $0 <host_pattern|'host_ip1 host_ip2 ...'>"
+    exit 1
+fi
+
+function kinoinfo {
+    echo "Current supported functions"
+    echo "my_ssh: execute commands on all host"
+    echo "   Reboot network on all hosts:"
+    echo "   my_ssh /etc/init.d/network restart"
+    echo "my_scp_from: copy files from all hosts and save to ./\$host_ip"
+    echo "   Copy hostd logs from all hosts"
+    echo "   my_scp_from /var/log/system.log /var/log/kernel.log"
+    echo "my_scp_to: copy files to all hosts"
+    echo "   Copy rpm file to all hosts"
+    echo "   my_scp_to ./open-iscsi.rpm '~/'"
+
+    exit 0
+}
+
+if [ "$1" == "info" ]
+then
+    kinoinfo
+    exit 0
+fi
+
+host_ptn=$1
+
+
+######## Change if needed! ###############
+my_pass='jttqzsh'
+########
+
+if [ "0$my_hosts" == "0" ]
+then
+    # single host case
+    my_hosts="$1"
+fi
+
+echo "Hosts:"
+echo "$my_hosts"
+
+########
+#
+# Execute given paramter as command on all hosts
+# Command output saved to ${host_ip}_output for later use
+# :param command to be executed
+# sample: reboot network on all hosts
+#    my_ssh_output /etc/init.d/network restart
+#
+############################################
+function my_ssh_output {
+    for host_ip in $my_hosts
+    do
+    echo "####### $host_ip START ############################################" > ${host_ip}_output
+    /usr/bin/expect<<EOF 1>>${host_ip}_output 2>&1 &
+    set timeout 3600
+    spawn ssh -oStrictHostKeyChecking=no root@$host_ip $*
+    expect {
+        -nocase "yes/no" { send "yes\r"; exp_continue }
+        assword: { send "$my_pass\r"; exp_continue }
+    }
+EOF
+    done
+    wait
+    for host_ip in $my_hosts
+    do
+	cat ${host_ip}_output
+    	#echo "####### $host_ip END ##############################################"
+    done
+}
+
+function my_ssh {
+    my_ssh_output $*
+    for host_ip in $my_hosts
+    do
+	rm -f ${host_ip}_output
+    done
+}
+
+########
+#
+# Run command on single host
+# :param host_ip command
+# sample:
+#    my_ssh_1 $host_ip uname -a
+#
+############################################
+
+function my_ssh_1 {
+    host_ip=$1
+    cmd=${@: 2:$#}
+    /usr/bin/expect<<EOF 2>&1
+    set timeout 30
+    spawn ssh -oStrictHostKeyChecking=no root@$host_ip $cmd
+    expect {
+        -nocase "yes/no" { send "yes\r"; exp_continue }
+        assword: { send "$my_pass\r"; exp_continue }
+    }
+EOF
+}
+
+########
+#
+# Copy files to all hosts
+# :param localpath remotepath
+# sample:
+#    my_scp_to /local/file1 /local/file2 /remote/path
+#
+############################################
+function my_scp_to {
+    for host_ip in $my_hosts
+    do
+        /usr/bin/expect<<EOF 2>&1
+        set timeout 300
+        spawn scp ${@: 1:$#-1} root@$host_ip:${@: -1}
+        expect {
+            -nocase "yes/no" { send "yes\r"; exp_continue }
+            assword: { send "$my_pass\r"; exp_continue }
+        }
+EOF
+    done
+}
+
+########
+#
+# Copy files from all hosts
+# :param remotepath localpath
+# sample:
+#    my_scp_from /remote/file1 /remote/file2 /local/path
+#
+############################################
+function my_scp_from {
+    cp_file=$@
+    for host_ip in $my_hosts
+    do
+	remote_file=''
+	for f in $cp_file
+	do
+	    remote_file="$remote_file root@$host_ip:$f"
+	done
+	mkdir $host_ip 2>/dev/null
+    /usr/bin/expect<<EOF 1>/dev/null 2>&1 &
+        set timeout 300
+        spawn scp $remote_file $host_ip
+        expect {
+            -nocase "yes/no" { send "yes\r"; exp_continue }
+            assword: { send "$my_pass\r"; exp_continue }
+        }
+EOF
+    done
+    wait
+}
+
+########
+#
+# Copy files from one host
+# :param remotepath localpath
+# sample:
+#    my_scp_from /remote/file1 /remote/file2
+#
+############################################
+function my_scp_from_1 {
+    host_ip=$1
+    cp_file=$2
+    mkdir $host_ip 2>/dev/null
+    /usr/bin/expect<<EOF 1>/dev/null 2>&1 &
+    set timeout 300
+    spawn scp root@$host_ip:$cp_file $host_ip
+    expect {
+            -nocase "yes/no" { send "yes\r"; exp_continue }
+            assword: { send "$my_pass\r"; exp_continue }
+    }
+EOF
+    wait
+}
+
